@@ -7,3 +7,4 @@ project/target
 project/.bloop
 target
 .metals.sbt
+.idea
