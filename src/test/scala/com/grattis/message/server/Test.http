@@ -1,0 +1,11 @@
+WEBSOCKET ws://localhost:8080/channels/channel/users/user
+Content-Type: text/plain // used only for IDE highlighting.
+// Highlighting is applied for each message independently.
+
+###
+
+WEBSOCKET ws://localhost:8080/channels/channel/users/user2
+Content-Type: text/plain // used only for IDE highlighting.
+// Highlighting is applied for each message independently.
+
+###

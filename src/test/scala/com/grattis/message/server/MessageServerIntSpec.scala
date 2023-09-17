@@ -1,7 +1,7 @@
 package com.grattis.message.server
 
 import akka.{Done, NotUsed}
-import akka.actor.ActorSystem
+import akka.actor.typed.ActorSystem
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.ws.{Message, TextMessage}
 import akka.stream.scaladsl.{Flow, Keep, Sink, Source}
@@ -26,8 +26,9 @@ class MessageServerIntSpec extends AnyWordSpec with Matchers with BeforeAndAfter
   private val Host = "localhost"
   private val Port = 8345
 
-  implicit val system: ActorSystem = ActorSystem("MessageServerIntSpec")
-  import system.dispatcher
+  implicit val system: ActorSystem[RegisterChannel] = ActorSystem(ChannelRegistryActor(), "akka-system")
+
+  import system.executionContext
 
   override def beforeAll(): Unit = {
     Http().newServerAt(Host, Port).bind(MessageServer.route())
@@ -43,8 +44,8 @@ class MessageServerIntSpec extends AnyWordSpec with Matchers with BeforeAndAfter
       val receiveMessagesOne = Sink.seq[Message]
       val receiveMessagesTwo = Sink.seq[Message]
 
-      val webSocketFlowOne: Flow[Message, Message, Future[WebSocketUpgradeResponse]] = Http().webSocketClientFlow(WebSocketRequest(s"ws://$Host:$Port/channels/test"))
-      val webSocketFlowTwo: Flow[Message, Message, Future[WebSocketUpgradeResponse]] = Http().webSocketClientFlow(WebSocketRequest(s"ws://$Host:$Port/channels/test"))
+      val webSocketFlowOne: Flow[Message, Message, Future[WebSocketUpgradeResponse]] = Http().webSocketClientFlow(WebSocketRequest(s"ws://$Host:$Port/channels/test/users/user1"))
+      val webSocketFlowTwo: Flow[Message, Message, Future[WebSocketUpgradeResponse]] = Http().webSocketClientFlow(WebSocketRequest(s"ws://$Host:$Port/channels/test/users/user2"))
 
       val twoSource = Source.maybe[TextMessage]
       val oneSource = Source.maybe[TextMessage]
