@@ -61,7 +61,7 @@ object MessageServer extends LazyLogging {
 
                     val publishSink: Sink[Topic.Command[TopicMessage], NotUsed] = ActorSink.actorRef[Topic.Command[TopicMessage]](topic, Topic.Publish(TopicMessage(None, user)), (ex: Throwable) => { Topic.Publish(TopicMessage(None, user)) })
 
-                    val incoming: Flow[Message, Message, NotUsed] = Flow[Message]
+                    val incoming: Sink[Message, NotUsed] = Flow[Message]
                       .map {
                         case TextMessage.Strict(msg) => Some(TopicMessage(Some(msg), user))
                         case _ => None
@@ -74,15 +74,12 @@ object MessageServer extends LazyLogging {
                         case TopicMessage(Some(msg), _) => Some(TextMessage.Strict(s"Message processed: $msg"))
                         case _ => None
                       }
-                      .collect({ case Some(msg) => msg })
+                      .collect({ case Some(msg) => msg }).to(Sink.seq)
 
-                    val topicSourceFlow: Flow[Message, Message, NotUsed] = Flow[Message].flatMapConcat { msg =>
-                        val msgSource = Source.single(msg)
-                        //val testSource = source.collect({case m: TopicMessage => m}).filter(_.user != user).map(msg => TextMessage.Strict(msg.message.getOrElse("")))
-                        val testSource = source.collect({case m: TopicMessage => m}).map(msg => TextMessage.Strict(msg.message.getOrElse("")))
-                        msgSource.concat(testSource)
-                    }
-                    handleWebSocketMessages(incoming.via(topicSourceFlow).recover {
+                    val topicSource = source.collect({case m: TopicMessage => m}).filter(_.user != user).map(msg => TextMessage.Strict(msg.message.getOrElse("")))
+
+                    val topicSourceFlow: Flow[Message, Message, NotUsed] = Flow.fromSinkAndSourceCoupled(incoming, topicSource)
+                    handleWebSocketMessages(topicSourceFlow.recover {
                         case ex: Exception =>
                             TextMessage.Strict(s"An error occurred: ${ex.getMessage}")
                     })
