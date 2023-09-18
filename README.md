@@ -26,9 +26,9 @@ sbtVersion
 
 ## Key Concepts
 
-Akka Actors: The server uses the actor model to manage concurrent, distributed, and resilient message-driven applications.
-Akka HTTP: A toolkit for building connection-level and application-level APIs, utilizing the reactive streams approach.
-Akka Streams: A library to process and transfer a sequence of elements using bounded buffer space.
+1. Akka Actors: The server uses the actor model to manage concurrent, distributed, and resilient message-driven applications.
+2. Akka HTTP: A toolkit for building connection-level and application-level APIs, utilizing the reactive streams approach.
+3. Akka Streams: A library to process and transfer a sequence of elements using bounded buffer space.
 
 
 ## Usage
