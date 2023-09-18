@@ -4,12 +4,7 @@
 
 The Akka Message Server is an educational project designed to help individuals learn about building reactive and scalable web servers with Akka Streams and Akka HTTP in Scala. The project demonstrates how to leverage Akka actors and websockets to establish a dynamic messaging server where clients can register message sources and send messages to channels dynamically.
 
-## Features
-
-1. **Dynamic Channel Registration:** Clients can dynamically register message sources with unique keys.
-2. **WebSocket Support:** Uses WebSockets to facilitate bidirectional message streams.
-3. **Source Registry Actor:** A central entity that manages the registration and creation of message sources.
-4. **Reactive Stream Handling:** Incorporates Akka Streams to efficiently manage data streams with backpressure support.
+This implementation provides a real-time messaging server where users can subscribe to various channels to exchange messages. Leveraging the Akka framework, it offers a scalable and resilient solution, efficiently handling channel registrations and message subscriptions through WebSocket connections. It maintains a dynamic registry of channels and subscribers, ensuring optimal resource usage and easy management of user connections.
 
 ## Setup
 
@@ -29,45 +24,39 @@ sbtVersion
 ./build
 ```
 
+## Key Concepts
+
+Akka Actors: The server uses the actor model to manage concurrent, distributed, and resilient message-driven applications.
+Akka HTTP: A toolkit for building connection-level and application-level APIs, utilizing the reactive streams approach.
+Akka Streams: A library to process and transfer a sequence of elements using bounded buffer space.
+
+
 ## Usage
 
-With the server running, WebSocket clients can interact with it. Connect to a WebSocket using the URL ws://localhost:8080/channels/<CHANNEL_NAME>, replacing <CHANNEL_NAME> with the name of the channel you wish to register or send messages to.
-
-Project Structure
-The project contains two main Scala classes:
-
-1. SourceRegistryActor:
-
-Manages the registration of message sources.
-Maintains a registry of created sources along with their respective message queues and streams.
-
-2. MessageServer:
-Initializes the HTTP server and establishes routes for the application.
-Manages WebSocket connections and handles message exchanges.
-Includes the main method to initiate the server and facilitate graceful shutdowns.
-
-## Code Flow
-
-The MessageServer object sets up the HTTP server and delineates the route-handling logic.
-Upon receiving a request at the "/channels/<segment>" endpoint, it sends a RegisterSource message to the SourceRegistryActor.The SourceRegistryActor processes RegisterSource messages by either retrieving an existing source or creating a new one. The MessageServer configures a WebSocket message handler to process incoming text messages and merges them with the respective message source.
-
-## Dependencies
-- Akka Actor
-- Akka Stream
-- Akka HTTP
+To use this messaging server, deploy it to a server, and use WebSocket clients to connect to it by navigating to ws://<server_address>:8080/channels/<channel_name>/users/<user_name>.
 
 ## Weaknesses:
 
-1. Error Handling: The current implementation lacks comprehensive error handling. For instance, in case of an unsupported message type, it simply returns a text message instead of handling the error more robustly.
+1. Error Handling: The current implementation has limited error handling, particularly in the WebSocket flow where all exceptions are caught and a simple text message is returned. A more robust error handling mechanism could provide richer error information and different responses depending on the error type.
 
-2. Scalability Concerns: The mutable Map (mutable.Map[String, SourceQueue]) used in SourceRegistryActor could potentially become a bottleneck in a highly concurrent scenario, and may also present issues with data consistency.
+2. Logging and Monitoring: Although there is some logging implemented, adding more comprehensive logging and monitoring would be beneficial to trace the system's behavior and identify potential issues quickly.
 
-3. Resource Limits: The bounded message queue has a hardcoded size limit, which may not be flexible enough for varying load scenarios. Moreover, the server might face issues if the number of messages exceeds this limit.
+3. Code Modularity: The ChannelRegistryActor is handling multiple responsibilities, including managing channels and monitoring subscribers. This could be broken down into smaller, more focused components to adhere better to the Single Responsibility Principle.
 
-4. Single Actor Instance: Creating a single instance of SourceRegistryActor might not distribute the load evenly across the system. Utilizing a pool of actors or a more sophisticated actor hierarchy might offer better load distribution and scalability.
+4. Concurrency and Synchronization: The use of mutable collections (like mutable.Set) might lead to concurrency issues if not handled carefully. It's better to avoid mutable state or use structures that are designed to handle concurrent access safely.
 
-5. Potential Memory Leaks: The registry map keeps growing as new sources are registered, which could lead to memory leaks over time as entries are never removed.
+5. Resource Cleanup: Currently, the termination of channels is based on the termination of subscribers. A more sophisticated cleanup strategy could be implemented to better manage resources, especially in scenarios with fluctuating numbers of active channels and subscribers.
 
+6. Security: The current state lacks security features like authentication and authorization, leaving the channels open to unauthorized access and potential misuse.
+
+7. Scalability Concerns: The use of a single actor (ChannelRegistryActor) as a centralized registry might become a bottleneck in a system with a high number of channels and subscribers.
+
+8. Testing: The current state lacks unit and integration tests, which are critical for ensuring the reliability of the system, especially when making changes or additions to the codebase.
+
+
+## Next Steps
+
+In the next phase of the project, we aim to enhance the messaging server's capabilities by integrating Akka's DistributedPubSub and a Replicator to distribute data across multiple nodes, enabling better scalability and reliability.
 
 ## Contributing
 

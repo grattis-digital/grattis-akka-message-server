@@ -14,7 +14,7 @@ import akka.stream.scaladsl.{Flow, Keep, Sink, Source}
 import akka.actor.typed.pubsub.Topic
 import akka.actor.typed.scaladsl.AskPattern.*
 import akka.util.Timeout
-import akka.http.scaladsl.server.Route
+import akka.http.scaladsl.server.{FIXME, Route}
 import akka.stream.{ActorAttributes, Materializer, OverflowStrategy, StreamSubscriptionTimeoutTerminationMode}
 import com.typesafe.scalalogging.LazyLogging
 import akka.stream.typed.scaladsl.ActorSource
@@ -25,6 +25,9 @@ import scala.io.StdIn
 
 object MessageServer extends LazyLogging {
 
+    /**
+     * https://github.com/akka/akka/issues/28926
+     */
     def fancyPreMaterialize[Out, Mat](in: Source[Out, Mat], timeout: FiniteDuration)
                                      (implicit materializer: Materializer)
     : (Mat, Source[Out, akka.NotUsed]) = {
@@ -41,9 +44,9 @@ object MessageServer extends LazyLogging {
         mat -> Source.fromPublisher(pub)
     }
 
-    def route()(implicit system: ActorSystem[RegisterChannel], timeout: Timeout): Route = {
+    def route()(implicit system: ActorSystem[ChannelRegistryCommand], timeout: Timeout): Route = {
 
-        val channelRegistryActor: ActorRef[RegisterChannel] = system
+        val channelRegistryActor: ActorRef[ChannelRegistryCommand] = system
 
         path("channels" / Segment / "users" / Segment ) { (channel, user) =>
             onSuccess(channelRegistryActor.ask(ref => RegisterChannel(channel, ref))) {
@@ -55,13 +58,17 @@ object MessageServer extends LazyLogging {
                         bufferSize = 1000,
                         overflowStrategy = OverflowStrategy.dropHead
                     )
-                    val topic = registered.topic
-                    val (responseActorRef, source) = fancyPreMaterialize(responseSource, 120.seconds)
-                    topic ! Topic.Subscribe(responseActorRef)
+                    val topic: ActorRef[Topic.Command[TopicMessage]] = registered.topic
+                    val (responseActorRef: ActorRef[MessageResult], source: Source[MessageResult, NotUsed]) = fancyPreMaterialize(responseSource, 120.seconds)
 
-                    val publishSink: Sink[Topic.Command[TopicMessage], NotUsed] = ActorSink.actorRef[Topic.Command[TopicMessage]](topic, Topic.Publish(TopicMessage(None, user)), (ex: Throwable) => { Topic.Publish(TopicMessage(None, user)) })
+                    channelRegistryActor ! SubscribeForChannel(channel, responseActorRef)
 
-                    val incoming: Sink[Message, NotUsed] = Flow[Message]
+                    val publishSink: Sink[Topic.Command[TopicMessage], NotUsed] = ActorSink.actorRef[Topic.Command[TopicMessage]](
+                        topic,
+                        Topic.Publish(TopicMessage(None, user)),
+                        (ex: Throwable) => { Topic.Publish(TopicMessage(None, user)) })
+
+                    val incoming: Flow[Message, Message, NotUsed] = Flow[Message]
                       .map {
                         case TextMessage.Strict(msg) => Some(TopicMessage(Some(msg), user))
                         case _ => None
@@ -74,11 +81,16 @@ object MessageServer extends LazyLogging {
                         case TopicMessage(Some(msg), _) => Some(TextMessage.Strict(s"Message processed: $msg"))
                         case _ => None
                       }
-                      .collect({ case Some(msg) => msg }).to(Sink.seq)
+                      .collect({ case Some(msg) => msg })
 
-                    val topicSource = source.collect({case m: TopicMessage => m}).filter(_.user != user).map(msg => TextMessage.Strict(msg.message.getOrElse("")))
+                    val topicSource = source.collect({case m: TopicMessage if m.message.isDefined => m}).filter(_.user != user).map(msg => TextMessage.Strict(msg.message.getOrElse("")))
 
-                    val topicSourceFlow: Flow[Message, Message, NotUsed] = Flow.fromSinkAndSourceCoupled(incoming, topicSource)
+                    val topicSourceFlow: Flow[Message, Message, NotUsed] = incoming.merge(topicSource).merge(Source
+                      .tick(
+                          20.second, // delay of first tick
+                          20.second, // delay of subsequent ticks
+                          "heartbeat" // element emitted each tick
+                      ).map(msg => TextMessage.Strict(msg)))
                     handleWebSocketMessages(topicSourceFlow.recover {
                         case ex: Exception =>
                             TextMessage.Strict(s"An error occurred: ${ex.getMessage}")
@@ -91,7 +103,7 @@ object MessageServer extends LazyLogging {
 
     def main(args: Array[String]): Unit = {
 
-        implicit val system: ActorSystem[RegisterChannel] = ActorSystem(ChannelRegistryActor(), "akka-system")
+        implicit val system: ActorSystem[ChannelRegistryCommand] = ActorSystem(ChannelRegistryActor(), "akka-system")
         import system.executionContext
         implicit val timeout: Timeout = Timeout(600.seconds)
 
