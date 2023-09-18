@@ -1,0 +1,95 @@
+WEBSOCKET ws://localhost:8080/channels/channel/users/user
+Content-Type: text/plain // used only for IDE highlighting.
+// Highlighting is applied for each message independently.
+
+###
+
+WEBSOCKET ws://localhost:8080/channels/channel/users/user2
+Content-Type: text/plain // used only for IDE highlighting.
+// Highlighting is applied for each message independently.
+
+###
+
+WEBSOCKET ws://localhost:8080/channels/channel/users/user3
+Content-Type: text/plain // used only for IDE highlighting.
+// Highlighting is applied for each message independently.
+
+###
+
+WEBSOCKET ws://localhost:8080/channels/channel/users/user4
+Content-Type: text/plain // used only for IDE highlighting.
+// Highlighting is applied for each message independently.
+
+###
+
+WEBSOCKET ws://localhost:8080/channels/channel/users/user5
+Content-Type: text/plain // used only for IDE highlighting.
+// Highlighting is applied for each message independently.
+
+###
+
+WEBSOCKET ws://localhost:8080/channels/channel/users/user6
+Content-Type: text/plain // used only for IDE highlighting.
+// Highlighting is applied for each message independently.
+
+###
+
+WEBSOCKET ws://localhost:8080/channels/channel/users/user7
+Content-Type: text/plain // used only for IDE highlighting.
+// Highlighting is applied for each message independently.
+
+###
+
+WEBSOCKET ws://localhost:8080/channels/channel/users/user8
+Content-Type: text/plain // used only for IDE highlighting.
+// Highlighting is applied for each message independently.
+
+###
+
+WEBSOCKET ws://localhost:8080/channels/channel/users/user9
+Content-Type: text/plain // used only for IDE highlighting.
+// Highlighting is applied for each message independently.
+
+###
+
+WEBSOCKET ws://localhost:8080/channels/channel/users/user10
+Content-Type: text/plain // used only for IDE highlighting.
+// Highlighting is applied for each message independently.
+
+###
+
+WEBSOCKET ws://localhost:8080/channels/channel/users/user11
+Content-Type: text/plain // used only for IDE highlighting.
+// Highlighting is applied for each message independently.
+
+###
+
+WEBSOCKET ws://localhost:8080/channels/channel/users/user12
+Content-Type: text/plain // used only for IDE highlighting.
+// Highlighting is applied for each message independently.
+
+###
+
+WEBSOCKET ws://localhost:8080/channels/channel/users/user13
+Content-Type: text/plain // used only for IDE highlighting.
+// Highlighting is applied for each message independently.
+
+###
+
+WEBSOCKET ws://localhost:8080/channels/channel/users/user14
+Content-Type: text/plain // used only for IDE highlighting.
+// Highlighting is applied for each message independently.
+
+###
+
+WEBSOCKET ws://localhost:8080/channels/channel/users/user15
+Content-Type: text/plain // used only for IDE highlighting.
+// Highlighting is applied for each message independently.
+
+###
+
+WEBSOCKET ws://localhost:8080/channels/channel/users/user16
+Content-Type: text/plain // used only for IDE highlighting.
+// Highlighting is applied for each message independently.
+
+###
