@@ -8,3 +8,5 @@ project/.bloop
 target
 .metals.sbt
 .idea
+venv
+project/metals.sbt
