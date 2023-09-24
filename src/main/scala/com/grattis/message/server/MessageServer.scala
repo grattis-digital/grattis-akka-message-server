@@ -91,17 +91,15 @@ object MessageServer extends LazyLogging {
                     channelRegistryActor ! SubscribeForChannel(channel, user, responseActorRef)
 
                     // the heartbeat source is used to send messages to the client in order to keep the connection alive
-                    val heartBeatSource = Source.tick(
+                    val heartBeatSource: Source[TextMessage.Strict, UniqueKillSwitch] = Source.tick(
                       20.second, // delay of first tick
                       20.second, // delay of subsequent ticks
                       "heartbeat" // element emitted each tick
-                    ).map(msg => TextMessage.Strict(msg))
+                    )
+                    .map(msg => TextMessage.Strict(msg))
+                    .viaMat(KillSwitches.single)(Keep.right)
 
-                    // the kill switch is used to shutdown the stream
-                    val (killSwitch: UniqueKillSwitch, _) = heartBeatSource
-                      .viaMat(KillSwitches.single)(Keep.right)
-                      .toMat(Sink.ignore)(Keep.both)
-                      .run()
+                    val (killSwitch, extractedHeartBeatSource) = heartBeatSource.preMaterialize()
 
                     // the clean up function is used to unregister the channel and shutdown the stream
                     def cleanUp(): Unit = {
@@ -194,7 +192,7 @@ object MessageServer extends LazyLogging {
                           .merge(topicSource)
                           // heartbeat messages in order to keep the connection alive and prevent timeouts
                           // every 20 seconds a message is sent to the client
-                          .merge(heartBeatSource)
+                          .merge(extractedHeartBeatSource)
                     // handle the websocket messages
                     handleWebSocketMessages(topicSourceFlow.recover {
                         case ex: Exception =>
