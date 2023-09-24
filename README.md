@@ -6,6 +6,9 @@ The Akka Message Server is an educational project designed to help individuals l
 
 This implementation provides a real-time messaging server where users can subscribe to various channels to exchange messages. Leveraging the Akka framework, it offers a scalable and resilient solution, efficiently handling channel registrations and message subscriptions through WebSocket connections. It maintains a dynamic registry of channels and subscribers, ensuring optimal resource usage and easy management of user connections.
 
+
+[![Akka Message Server in Action](https://i.ytimg.com/an_webp/VEyg1Pa8d1w/mqdefault_6s.webp?du=3000&sqp=COiyt6gG&rs=AOn4CLD3BHIDa5wmYxWA0d2KGHXC-OP7qg)](https://youtu.be/VEyg1Pa8d1w "Akka Message Server in Action")
+
 ## Setup
 
 ```
