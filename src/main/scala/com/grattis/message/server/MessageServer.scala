@@ -82,10 +82,12 @@ object MessageServer extends LazyLogging {
                     // all subscribers receive the message published to the topic
                     val topic: ActorRef[Topic.Command[TopicMessage]] = registered.topic
 
+                    // this basically starts the source stream with the registered actor ref
                     // the response source contains basically of two objects
                     // the first is the actor ref that is used to send messages to the source
-                    // the second is the source itself - the source can be then used to materialize the stream
-                    val (responseActorRef: ActorRef[MessageResult], source: Source[MessageResult, NotUsed]) = fancyPreMaterialize(responseSource, 120.seconds)
+                    // the second is the source itself
+                    val (responseActorRef: ActorRef[MessageResult], source: Source[MessageResult, NotUsed]) =
+                      fancyPreMaterialize(responseSource, 120.seconds)
 
                     // the actor ref is used to subscribe to the topic - so it is basically the subscriber
                     channelRegistryActor ! SubscribeForChannel(channel, user, responseActorRef)
@@ -99,16 +101,24 @@ object MessageServer extends LazyLogging {
                     .map(msg => TextMessage.Strict(msg))
                     .viaMat(KillSwitches.single)(Keep.right)
 
-                    val (killSwitch, extractedHeartBeatSource) = heartBeatSource.preMaterialize()
+                    // this basically starts the heartbeat stream with the registered kill switch
+                    val (killSwitch, materializedHeartBeatSource) = heartBeatSource.preMaterialize()
 
                     // the clean up function is used to unregister the channel and shutdown the stream
                     def cleanUp(): Unit = {
                         logger.info(s"Channel '$channel' for user '$user' will be cleaned up")
                         // send a message to the source that the stream is completed
+                        // the Actor should be actually terminated automatically as part of the stream completion
+                        // but it takes a bit longer as it seems why I decided to clean it up manually to save resources
                         responseActorRef ! StreamTerminationMessage
                         // shutdown the heartbeat stream
+                        // same here - actually this thing is killed as part of the stream completion and it works fine
+                        // but it takes a bit longer as it seems why I decided to clean it up manually to save resources
                         killSwitch.shutdown()
-                        // unregister the subscriber
+                        // the ChannelRegistryActor is used to unregister the subscriber
+                        // the ChannelRegistryActor is listening also to a terminated message of the subscriber -
+                        // but this takes around 60 seconds after the stream is completed - so it would block resources
+                        // so I decided here to clean it up manually
                         channelRegistryActor ! UnsubscribeForChannel(channel, responseActorRef)
                     }
 
@@ -192,10 +202,10 @@ object MessageServer extends LazyLogging {
                           .merge(topicSource)
                           // heartbeat messages in order to keep the connection alive and prevent timeouts
                           // every 20 seconds a message is sent to the client
-                          .merge(extractedHeartBeatSource)
+                          .merge(materializedHeartBeatSource)
                     // handle the websocket messages
                     handleWebSocketMessages(topicSourceFlow.recover {
-                        case ex: Exception =>
+                        case NonFatal(ex)  =>
                             cleanUp()
                             throw new MessageServerException(s"Forcefully terminating the connection due to an error -  stream failed for channel '$channel' and  user '$user'", ex)
                     })
@@ -223,6 +233,7 @@ object MessageServer extends LazyLogging {
                             logger.info("could not stop service", ex)
                     }
                 }
+                logger.info(s"Server started: ${binding.localAddress}")
             case Failure(ex) =>
                 logger.error("Server failed to start", ex)
         }
