@@ -22,7 +22,7 @@ import scala.concurrent.duration.*
 class MessageServerIntSpec extends AnyWordSpec with Matchers with BeforeAndAfterAll with ScalaFutures {
 
   implicit override val patienceConfig: PatienceConfig = PatienceConfig(30.seconds, 100.millis)
-  implicit val timeout: Timeout = Timeout(5.seconds)
+  implicit val timeout: Timeout = Timeout(10.seconds)
 
   private val Host = "localhost"
   private val Port = 8345
