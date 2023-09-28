@@ -3,6 +3,7 @@ package com.grattis.message
 import akka.actor.typed.ActorRef
 import akka.actor.typed.pubsub.Topic
 
+import java.util.UUID
 import scala.collection.mutable
 
 package object server {
@@ -23,14 +24,9 @@ package object server {
 
   trait MessageResult
 
-  /*object MessageKind extends Enumeration {
-    type MessageKind = Value
-    val WriteAck, ReadAck, Heartbeat = Value
-  }
+  case class User(userName: String, id: String)
 
-  case class MessageData(id: String, kind: MessageKind.Value, text: Option[String] = null)*/
-
-  case class TopicMessage(message: Option[String], user: String, channel: String) extends MessageResult
+  case class TopicMessage(message: Option[String], user: User, channel: String) extends MessageResult
 
   case class TopicRegistration(actorRef: ActorRef[Topic.Command[TopicMessage]], subscriber: mutable.Map[ActorRef[TopicMessage], String])
 

@@ -19,6 +19,10 @@ libraryDependencies ++= Seq(
   "com.typesafe.akka" %% "akka-distributed-data" % akkaVersion,
   "com.typesafe.akka" %% "akka-cluster-tools" % akkaVersion,
   "com.typesafe.akka" %% "akka-cluster-typed" % akkaVersion,
+  "com.typesafe.akka" %% "akka-persistence-typed" % akkaVersion,
+  "com.typesafe.akka" %% "akka-persistence-query" % akkaVersion,
+  "org.fusesource.leveldbjni" % "leveldbjni-all" % "1.8",
+  "com.typesafe.akka" %% "akka-persistence-testkit" % akkaVersion % Test,
 
   "com.typesafe.akka" %% "akka-stream-testkit" % akkaVersion % Test,
   "com.typesafe.akka" %% "akka-testkit" % akkaVersion % Test,

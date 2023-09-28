@@ -1,28 +1,25 @@
 package com.grattis.message.server
 
-import akka.{Done, NotUsed}
-import akka.actor.typed.{ActorRef, ActorSystem}
-import akka.http.scaladsl.server.Directives.*
-import akka.http.scaladsl.Http
-
-import scala.util.Success
-import scala.util.Failure
-import scala.concurrent.duration.*
-import scala.util.control.NonFatal
-import akka.http.scaladsl.model.ws.{Message, TextMessage}
-import akka.stream.scaladsl.{Flow, Keep, Sink, Source}
 import akka.actor.typed.pubsub.Topic
 import akka.actor.typed.scaladsl.AskPattern.*
+import akka.actor.typed.{ActorRef, ActorSystem}
+import akka.http.scaladsl.Http
+import akka.http.scaladsl.model.ws.{Message, TextMessage}
 import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpResponse, StatusCodes}
-import akka.util.Timeout
+import akka.http.scaladsl.server.Directives.*
 import akka.http.scaladsl.server.Route
-import akka.stream.{ActorAttributes, KillSwitches, Materializer, OverflowStrategy, StreamSubscriptionTimeoutTerminationMode, UniqueKillSwitch}
+import akka.stream.scaladsl.{Flow, Keep, Sink, Source}
+import akka.stream.typed.scaladsl.{ActorSink, ActorSource}
+import akka.stream.*
+import akka.util.Timeout
+import akka.{Done, NotUsed}
 import com.typesafe.scalalogging.LazyLogging
-import akka.stream.typed.scaladsl.ActorSource
-import akka.stream.typed.scaladsl.ActorSink
 
+import scala.concurrent.duration.*
 import scala.concurrent.{ExecutionContext, Future}
 import scala.io.StdIn
+import scala.util.{Failure, Success}
+import scala.util.control.NonFatal
 
 
 object MessageServer extends LazyLogging {
@@ -55,15 +52,16 @@ object MessageServer extends LazyLogging {
         mat -> Source.fromPublisher(pub)
     }
 
-    def route()(implicit system: ActorSystem[ChannelRegistryCommand], timeout: Timeout, executionContext: ExecutionContext): Route = {
+    def route()(implicit system: ActorSystem[ChannelRegActor.ChannelRegistryActorCommand], timeout: Timeout, executionContext: ExecutionContext): Route = {
 
-        val channelRegistryActor: ActorRef[ChannelRegistryCommand] = system
+        val channelRegistryActor: ActorRef[ChannelRegActor.ChannelRegistryActorCommand] = system
 
         path("channels" / Segment / "users" / Segment ) { (channel, user) =>
             // find the channel
-            onSuccess(channelRegistryActor.ask(ref => RegisterChannel(channel, ref))) {
-                case registered: ChannelRegistered =>
+            onSuccess(channelRegistryActor.ask(ref => ChannelRegActor.RegisterChannel(channel, ref))) {
+                case registered: ChannelRegActor.ChannelRegistryEntry =>
                     logger.info(s"Channel registered '$channel' for user '$user'")
+                    val channelUser = User(user, user)
 
                     // https://doc.akka.io/docs/akka/current/stream/operators/ActorSource/actorRef.html
                     // a source that is materialized as an actor ref
@@ -78,10 +76,6 @@ object MessageServer extends LazyLogging {
                         overflowStrategy = OverflowStrategy.dropHead
                     )
 
-                    // a registered channel contains a topic actor ref which is used to publish messages so that
-                    // all subscribers receive the message published to the topic
-                    val topic: ActorRef[Topic.Command[TopicMessage]] = registered.topic
-
                     // this basically starts the source stream with the registered actor ref
                     // the response source contains basically of two objects
                     // the first is the actor ref that is used to send messages to the source
@@ -90,7 +84,7 @@ object MessageServer extends LazyLogging {
                       fancyPreMaterialize(responseSource, 120.seconds)
 
                     // the actor ref is used to subscribe to the topic - so it is basically the subscriber
-                    channelRegistryActor ! SubscribeForChannel(channel, user, responseActorRef)
+                    registered.channelActor ! ChannelActor.AddToChannel(channelUser, responseActorRef)
 
                     // the heartbeat source is used to send messages to the client in order to keep the connection alive
                     val heartBeatSource: Source[TextMessage.Strict, UniqueKillSwitch] = Source.tick(
@@ -119,27 +113,27 @@ object MessageServer extends LazyLogging {
                         // the ChannelRegistryActor is listening also to a terminated message of the subscriber -
                         // but this takes around 60 seconds after the stream is completed - so it would block resources
                         // so I decided here to clean it up manually
-                        channelRegistryActor ! UnsubscribeForChannel(channel, responseActorRef)
+                        registered.channelActor ! ChannelActor.UnsubscribeFromChannel(channelUser)
                     }
 
                     // the actor sink here is the target which used to send messages to the topic
-                    val publishSink: Sink[Topic.Command[TopicMessage], NotUsed] = ActorSink.actorRef[Topic.Command[TopicMessage]](
+                    val publishSink: Sink[ChannelActor.PublishToChannel, NotUsed] = ActorSink.actorRef[ChannelActor.PublishToChannel](
                         // the actor ref is used to send messages to the topic
-                        topic,
+                        registered.channelActor,
                         // the message that is sent to the topic when the stream is completed
-                        Topic.Publish(TopicMessage(None, user, channel)),
+                        ChannelActor.PublishToChannel(TopicMessage(None, channelUser, channel)),
                         // the message that is sent to the topic when the stream is failed
                         (ex: Throwable) => {
                             logger.error(s"Topic actor sink stream error for channel '$channel' and user '$user'", ex)
                             // publish a message to the topic that the stream is failed
-                            Topic.Publish(TopicMessage(None, user, channel))
+                            ChannelActor.PublishToChannel(TopicMessage(None, channelUser, channel))
                         })
 
                     // all message incoming via the websocket
                     val incoming: Flow[Message, Message, NotUsed] = Flow[Message]
                       // all incoming messages are mapped to a TopicMessage if there are plain text messages
                       .map {
-                        case TextMessage.Strict(msg) => Some(TopicMessage(Some(msg), user, channel))
+                        case TextMessage.Strict(msg) => Some(TopicMessage(Some(msg), channelUser, channel))
                         case _ => None
                       }
                       // collect only the messages that are not None
@@ -147,12 +141,12 @@ object MessageServer extends LazyLogging {
                       // map the messages to a tuple of the message and the topic command
                       // the topic command is used to publish the message to the topic
                       // the message is used to send the message to the source as a response for an acknowledgement
-                      .map(msg => (Topic.Publish(msg), msg))
+                      .map(msg => (ChannelActor.PublishToChannel(msg), msg))
                       // the topic command is sent to the topic
                       .alsoTo(
-                          Flow[(Topic.Command[TopicMessage], TopicMessage)]
+                          Flow[(ChannelActor.PublishToChannel, TopicMessage)]
                             .map {
-                                case (cmd: Topic.Command[TopicMessage], _) => cmd
+                                case (cmd: ChannelActor.PublishToChannel, _) => cmd
                             }
                             .to(publishSink)
                       )
@@ -190,7 +184,7 @@ object MessageServer extends LazyLogging {
                       .collect { case m: TopicMessage if m.message.isDefined => m }
                       // filter out the messages that are not from the user
                       // this is done to prevent that the user receives his own messages
-                      .filter(elem => elem.user != user)
+                      .filter(elem => elem.user != channelUser)
                       // map the messages to a TextMessage
                       .map(msg => TextMessage.Strict(msg.message.get))
 
@@ -217,7 +211,7 @@ object MessageServer extends LazyLogging {
 
     def main(args: Array[String]): Unit = {
 
-        implicit val system: ActorSystem[ChannelRegistryCommand] = ActorSystem(ChannelRegistryActor(), "akka-system")
+        implicit val system: ActorSystem[ChannelRegActor.ChannelRegistryActorCommand] = ActorSystem(ChannelRegActor(), "akka-system")
         import system.executionContext
         implicit val timeout: Timeout = Timeout(600.seconds)
 

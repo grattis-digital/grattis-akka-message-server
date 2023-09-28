@@ -5,21 +5,23 @@ import akka.actor.typed.ActorSystem
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.ws.{Message, TextMessage}
 import akka.stream.scaladsl.{Flow, Sink, Source}
-import org.scalatest.BeforeAndAfterAll
+import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach}
 import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import akka.stream.scaladsl.*
 import akka.http.scaladsl.model.*
 import akka.http.scaladsl.model.ws.*
+import akka.persistence.testkit.javadsl.PersistenceTestKit
 import akka.util.Timeout
-import akka.stream._
+import akka.stream.*
+import akka.actor.typed.scaladsl.adapter._
 
 import scala.concurrent.{Future, Promise}
 import scala.concurrent.duration.*
 
 
-class MessageServerIntSpec extends AnyWordSpec with Matchers with BeforeAndAfterAll with ScalaFutures {
+class MessageServerIntSpec extends AnyWordSpec with Matchers with BeforeAndAfterAll with BeforeAndAfterEach with ScalaFutures {
 
   implicit override val patienceConfig: PatienceConfig = PatienceConfig(30.seconds, 100.millis)
   implicit val timeout: Timeout = Timeout(10.seconds)
@@ -27,8 +29,10 @@ class MessageServerIntSpec extends AnyWordSpec with Matchers with BeforeAndAfter
   private val Host = "localhost"
   private val Port = 8345
 
-  implicit val system: ActorSystem[ChannelRegistryCommand] = ActorSystem(ChannelRegistryActor(), "akka-system")
-
+  implicit val system: ActorSystem[ChannelRegActor.ChannelRegistryActorCommand] = ActorSystem(ChannelRegActor(), "akka-system")
+  val persistenceTestKit = PersistenceTestKit(system.toClassic)
+  
+  
   import system.executionContext
 
   override def beforeAll(): Unit = {
@@ -37,6 +41,10 @@ class MessageServerIntSpec extends AnyWordSpec with Matchers with BeforeAndAfter
 
   override def afterAll(): Unit = {
     system.terminate()
+  }
+  
+  override def afterEach(): Unit = {
+    persistenceTestKit.clearAll()
   }
 
   def messageSink(responsePromise: Promise[Done], duration: FiniteDuration): Sink[Message, Future[Done]] = {
