@@ -1,6 +1,5 @@
 package com.grattis.message.server
 
-import akka.actor.typed.pubsub.Topic
 import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
 import akka.actor.typed.{ActorRef, Behavior}
 import akka.persistence.typed.PersistenceId
@@ -34,6 +33,7 @@ object ChannelActor {
   case class UserRemovedFromChannel(user: UserActor.User) extends ChannelActorEvent
 
   case class ChannelUserWithRef(channelUser: UserActor.User, ref: ActorRef[UserActor.UserActorCommand], subscriber: Option[ActorRef[UserActor.TopicMessage]] = None)
+
   case class ChannelUserList(users: Set[ChannelUserWithRef] = Set.empty)
 
 
@@ -64,7 +64,7 @@ object ChannelActor {
           Effect.none
         }
       case toAdd: AddToChannel =>
-        if(state.users.exists(_.channelUser == toAdd.user)) {
+        if (state.users.exists(_.channelUser == toAdd.user)) {
           context.log.info(s"User ${toAdd.user} already added to channel $channel")
           toAdd.subscriber.foreach { subscriber =>
             context.self ! SubscribeToChannel(toAdd.user, subscriber)
@@ -75,9 +75,9 @@ object ChannelActor {
             context.log.info(s"User ${toAdd.user} added to channel $channel - sending subscribe message")
             toAdd.subscriber.foreach { subscriber =>
               context.self ! SubscribeToChannel(toAdd.user, subscriber)
-            }            
+            }
           }
-        }      
+        }
       case toRemove: RemoveFromChannel =>
         Effect.persist(UserRemovedFromChannel(toRemove.user)).thenRun { updatedState =>
           context.log.info(s"User ${toRemove.user} removed from channel $channel")
@@ -87,7 +87,7 @@ object ChannelActor {
       case toUnsubscribe: UnsubscribeFromChannel =>
         context.log.info(s"User ${toUnsubscribe.user} unsubscribed from channel $channel")
         subscriberMap.remove(toUnsubscribe.user.id)
-        if(subscriberMap.isEmpty) {
+        if (subscriberMap.isEmpty) {
           state.users.foreach(_.ref ! UserActor.Stop)
           toUnsubscribe.registry ! ChannelRegistryActor.UnregisterChannel(channel)
           context.self ! Stop
@@ -111,8 +111,8 @@ object ChannelActor {
       case persistedMessage: MessagePersisted =>
         subscriberMap.get(persistedMessage.receiverUser.id).foreach(_ ! persistedMessage.message)
         Effect.none
-      case Stop => 
-        Effect.stop()  
+      case Stop =>
+        Effect.stop()
       case _ =>
         Effect.none
     }

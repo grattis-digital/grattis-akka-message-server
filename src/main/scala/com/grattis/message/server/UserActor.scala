@@ -4,7 +4,6 @@ import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
 import akka.actor.typed.{ActorRef, Behavior}
 import akka.persistence.typed.PersistenceId
 import akka.persistence.typed.scaladsl.{Effect, EventSourcedBehavior}
-import com.grattis.message.server.ChannelActor.ChannelActorCommand
 
 
 object UserActor {
@@ -12,8 +11,9 @@ object UserActor {
   case class User(userName: String, id: String)
 
   trait MessageResult
+
   case class TopicMessage(message: Option[String], user: User, channel: String) extends MessageResult
-    
+
 
   trait UserActorCommand
 
@@ -28,11 +28,12 @@ object UserActor {
   trait UserActorEvent
 
   case class MessageReceived(msg: TopicMessage) extends UserActorEvent
+
   case class MessageRemoved(msg: TopicMessage) extends UserActorEvent
 
   case class UserActorState(messagesToDeliver: Seq[TopicMessage] = Nil)
 
-  def apply(user: User, channel: String) : Behavior[UserActorCommand] =
+  def apply(user: User, channel: String): Behavior[UserActorCommand] =
 
     Behaviors.setup {
       context =>
@@ -42,14 +43,13 @@ object UserActor {
           commandHandler = (state, command) => commandHandler(user, context, state, command),
           eventHandler = (state, event) => eventHandler(user, context, state, event))
 
-    }  
-    
-    
+    }
+
 
   private def commandHandler(user: User, context: ActorContext[UserActorCommand], state: UserActorState, command: UserActorCommand): Effect[UserActorEvent, UserActorState] = {
     command match {
       case Stop =>
-        Effect.stop() 
+        Effect.stop()
       case toAdd: AddMessage =>
         Effect.persist(MessageReceived(toAdd.msg)).thenRun(_ => toAdd.replyTo ! ChannelActor.MessagePersisted(toAdd.msg, user))
       case toRemove: RemoveMessage =>
