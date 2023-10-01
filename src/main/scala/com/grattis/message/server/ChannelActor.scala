@@ -11,32 +11,33 @@ object ChannelActor {
 
   trait ChannelActorCommand
 
-  case class GetFromChannel(user: User, ref: ActorRef[ChannelUserWithRef]) extends ChannelActorCommand
+  case object Stop extends ChannelActorCommand
 
-  case class AddToChannel(user: User, subscriber: ActorRef[TopicMessage]) extends ChannelActorCommand
+  case class GetFromChannel(user: UserActor.User, ref: ActorRef[ChannelUserWithRef]) extends ChannelActorCommand
 
-  case class RemoveFromChannel(user: User) extends ChannelActorCommand
+  case class AddToChannel(user: UserActor.User, subscriber: Option[ActorRef[UserActor.TopicMessage]] = None) extends ChannelActorCommand
 
-  case class UnsubscribeFromChannel(user: User) extends ChannelActorCommand
+  case class RemoveFromChannel(user: UserActor.User, registry: ActorRef[ChannelRegistryActor.ChannelRegistryActorCommand]) extends ChannelActorCommand
 
-  case class PublishToChannel(message: TopicMessage) extends ChannelActorCommand
+  case class UnsubscribeFromChannel(user: UserActor.User, registry: ActorRef[ChannelRegistryActor.ChannelRegistryActorCommand]) extends ChannelActorCommand
 
-  case class MessagePersisted(message: TopicMessage, receiverUser: User) extends ChannelActorCommand
+  case class PublishToChannel(message: UserActor.TopicMessage) extends ChannelActorCommand
 
+  case class MessagePersisted(message: UserActor.TopicMessage, receiverUser: UserActor.User) extends ChannelActorCommand
 
-  case class SubscribeToChannel(user: User, subscriber: ActorRef[TopicMessage]) extends ChannelActorCommand
+  case class SubscribeToChannel(user: UserActor.User, subscriber: ActorRef[UserActor.TopicMessage]) extends ChannelActorCommand
 
   trait ChannelActorEvent
 
-  case class UserAddedToChannel(user: User) extends ChannelActorEvent
+  case class UserAddedToChannel(user: UserActor.User) extends ChannelActorEvent
 
-  case class UserRemovedFromChannel(user: User) extends ChannelActorEvent
+  case class UserRemovedFromChannel(user: UserActor.User) extends ChannelActorEvent
 
-  case class ChannelUserWithRef(channelUser: User, ref: ActorRef[UserActor.UserActorCommand], subscriber: Option[ActorRef[TopicMessage]] = None)
+  case class ChannelUserWithRef(channelUser: UserActor.User, ref: ActorRef[UserActor.UserActorCommand], subscriber: Option[ActorRef[UserActor.TopicMessage]] = None)
   case class ChannelUserList(users: Set[ChannelUserWithRef] = Set.empty)
 
 
-  private val subscriberMap = mutable.Map.empty[String, ActorRef[TopicMessage]]
+  private val subscriberMap = mutable.Map.empty[String, ActorRef[UserActor.TopicMessage]]
 
   def apply(channel: String): Behavior[ChannelActorCommand] =
     Behaviors.setup {
@@ -63,17 +64,34 @@ object ChannelActor {
           Effect.none
         }
       case toAdd: AddToChannel =>
-        Effect.persist(UserAddedToChannel(toAdd.user)).thenRun { _ =>
-          context.log.info(s"User ${toAdd.user} added to channel $channel - sending subscribe message")
-          context.self ! SubscribeToChannel(toAdd.user, toAdd.subscriber)
-        }
+        if(state.users.exists(_.channelUser == toAdd.user)) {
+          context.log.info(s"User ${toAdd.user} already added to channel $channel")
+          toAdd.subscriber.foreach { subscriber =>
+            context.self ! SubscribeToChannel(toAdd.user, subscriber)
+          }
+          Effect.none
+        } else {
+          Effect.persist(UserAddedToChannel(toAdd.user)).thenRun { _ =>
+            context.log.info(s"User ${toAdd.user} added to channel $channel - sending subscribe message")
+            toAdd.subscriber.foreach { subscriber =>
+              context.self ! SubscribeToChannel(toAdd.user, subscriber)
+            }            
+          }
+        }      
       case toRemove: RemoveFromChannel =>
         Effect.persist(UserRemovedFromChannel(toRemove.user)).thenRun { updatedState =>
+          context.log.info(s"User ${toRemove.user} removed from channel $channel")
+          context.self ! UnsubscribeFromChannel(toRemove.user, toRemove.registry)
           updatedState.users.find(_.channelUser == toRemove.user).foreach(_.ref ! UserActor.Stop)
-          subscriberMap.remove(toRemove.user.id)
         }
       case toUnsubscribe: UnsubscribeFromChannel =>
+        context.log.info(s"User ${toUnsubscribe.user} unsubscribed from channel $channel")
         subscriberMap.remove(toUnsubscribe.user.id)
+        if(subscriberMap.isEmpty) {
+          state.users.foreach(_.ref ! UserActor.Stop)
+          toUnsubscribe.registry ! ChannelRegistryActor.UnregisterChannel(channel)
+          context.self ! Stop
+        }
         Effect.none
       case subscribe: SubscribeToChannel =>
         context.log.info(s"User ${subscribe.user} subscribed to channel $channel")
@@ -93,6 +111,8 @@ object ChannelActor {
       case persistedMessage: MessagePersisted =>
         subscriberMap.get(persistedMessage.receiverUser.id).foreach(_ ! persistedMessage.message)
         Effect.none
+      case Stop => 
+        Effect.stop()  
       case _ =>
         Effect.none
     }

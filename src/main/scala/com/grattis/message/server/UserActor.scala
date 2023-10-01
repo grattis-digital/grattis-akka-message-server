@@ -9,6 +9,12 @@ import com.grattis.message.server.ChannelActor.ChannelActorCommand
 
 object UserActor {
 
+  case class User(userName: String, id: String)
+
+  trait MessageResult
+  case class TopicMessage(message: Option[String], user: User, channel: String) extends MessageResult
+    
+
   trait UserActorCommand
 
   case class AddMessage(msg: TopicMessage, replyTo: ActorRef[ChannelActor.MessagePersisted]) extends UserActorCommand
