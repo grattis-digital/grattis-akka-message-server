@@ -1,73 +1,45 @@
 package com.grattis.message.server
 
 import akka.actor.typed.pubsub.Topic
-import akka.actor.typed.{ActorRef, Behavior, Terminated}
-import akka.actor.typed.scaladsl.Behaviors
-
+import akka.actor.typed.{ActorRef, Behavior}
+import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
+import akka.persistence.typed.PersistenceId
+import akka.persistence.typed.scaladsl.{Effect, EventSourcedBehavior}
 import scala.collection.mutable
 
 object ChannelRegistryActor {
 
-  def apply(): Behavior[Any] = Behaviors.setup { context =>
-    val topics = mutable.Map[String, TopicRegistration]()
-    val logger = context.log
+  trait ChannelRegistryActorCommand
 
-    def removeSubscriber(channel: String, subscriber: ActorRef[TopicMessage]): Unit = {
-      val topic = topics.get(channel)
-      topic.foreach { t =>
-        t.subscriber.get(subscriber).foreach {
-          user =>
-            val user = t.subscriber(subscriber)
-            t.subscriber.remove(subscriber)
-            t.actorRef ! Topic.Unsubscribe(subscriber)
-            logger.info(s"Removed subscriber for user '$user' from channel '$channel' - left nr of subscribers: '${t.subscriber.size}'")
-        }
-        if (t.subscriber.isEmpty) {
-          logger.info(s"No more subscribers for channel '$channel' - removing topic ...")
-          context.stop(t.actorRef)
-          topics.remove(channel)
-        }
-      }
-    }
+  case class RegisterChannel(channelName: String, replyTo: ActorRef[ChannelRegistryEntry]) extends ChannelRegistryActorCommand
 
-    Behaviors.receiveMessage {
-      case RegisterChannel(channel, replyTo) =>
-        val topic = topics.getOrElse(channel, {
+  case class UnregisterChannel(channelName: String) extends ChannelRegistryActorCommand
+
+  case class ChannelRegistryEntry(channelName: String, channelActor: ActorRef[ChannelActor.ChannelActorCommand])
+
+  case class ChannelRegistry(entries: Set[ChannelRegistryEntry] = Set.empty)
+
+  def apply(): Behavior[ChannelRegistryActorCommand] = Behaviors.setup {
+      context =>
+
+      val channelMap = mutable.Map.empty[String, ChannelRegistryEntry]
+
+      Behaviors.receiveMessage {
+      case RegisterChannel(channelName, replyTo) =>
+        context.log.info(s"Registering channel: $channelName")
+        replyTo ! channelMap.getOrElse(channelName, {
           // create a new topic as there is no topic for the channel yet
-          val to = context.spawn(Topic[TopicMessage](s"topic-$channel"), s"Topic-$channel")
-          val registration = TopicRegistration(actorRef = to, mutable.Map.empty)
+          val to = context.spawn(ChannelActor(channelName), s"channel-$channelName")
+          val registryEntry = ChannelRegistryEntry(channelName, to)
           // register the topic for the channel
-          topics.put(channel, registration)
-          registration
+          channelMap.put(channelName, registryEntry)
+          registryEntry
         })
-        // answer the sender with the topic actor ref
-        replyTo ! ChannelRegistered(channel, topic.actorRef)
         Behaviors.same
-      case SubscribeForChannel(channel, user, subscriber) =>
-        topics.get(channel).foreach { t =>
-          // add a new subscriber to the topic
-          t.actorRef ! Topic.Subscribe(subscriber)
-          t.subscriber.put(subscriber, user)
-          // watch the subscriber to remove it from the topic if it is terminated
-          // this should be actually just a fallback as the subscriber should be removed from the topic
-          // via UnsubscribeForChannel as part of the flow
-          context.watch(subscriber)
-        }
-        Behaviors.same
-      case UnsubscribeForChannel(channel, subscriber) =>
-        removeSubscriber(channel, subscriber)
-        Behaviors.same
-    }.receiveSignal {
-      // should be just a fallback for the case that the subscriber is terminated
-      // in some cases it is maybe not possible to send the UnsubscribeForChannel message
-      // with this handler should be guaranteed that the subscriber is removed from the topic
-      case (_, Terminated(subscriber)) =>
-        val topicSubscriber: ActorRef[TopicMessage] = subscriber.asInstanceOf[ActorRef[TopicMessage]]
-        topics.foreach {
-          case (channel: String, _) =>
-            removeSubscriber(channel, topicSubscriber)
-        }
-        Behaviors.same
-    }
+      case UnregisterChannel(channelName) => 
+        context.log.info(s"Unregistering channel: $channelName")
+        channelMap.remove(channelName)
+        Behaviors.same  
+      } 
   }
 }
