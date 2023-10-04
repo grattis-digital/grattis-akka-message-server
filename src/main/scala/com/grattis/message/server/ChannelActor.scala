@@ -4,6 +4,7 @@ import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
 import akka.actor.typed.{ActorRef, Behavior}
 import akka.persistence.typed.PersistenceId
 import akka.persistence.typed.scaladsl.{Effect, EventSourcedBehavior}
+
 import scala.collection.mutable
 
 object ChannelActor {
@@ -39,26 +40,31 @@ object ChannelActor {
 
   private val subscriberMap = mutable.Map.empty[String, ActorRef[UserActor.TopicMessage]]
 
-  def apply(channel: String): Behavior[ChannelActorCommand] =
+  def apply(
+             channel: String,
+             createUserActor: (UserActor.User, String, ActorContext[ChannelActorCommand]) => ActorRef[UserActor.UserActorCommand] = (user: UserActor.User, channel: String, context: ActorContext[ChannelActorCommand]) => {
+               context.spawn(UserActor(user, channel), user.id)
+             }
+           ): Behavior[ChannelActorCommand] =
     Behaviors.setup {
-      context =>
+      implicit context =>
         EventSourcedBehavior[ChannelActorCommand, ChannelActorEvent, ChannelUserList](
           persistenceId = PersistenceId.ofUniqueId(s"$channel"),
           emptyState = ChannelUserList(),
-          commandHandler = (state, command) => commandHandler(channel, context, state, command),
-          eventHandler = (state, event) => eventHandler(channel, context, state, event))
+          commandHandler = (state, command) => commandHandler(channel, state, command),
+          eventHandler = (state, event) => eventHandler(channel, state, event, createUserActor))
     }
 
   private def commandHandler(
                               channel: String,
-                              context: ActorContext[ChannelActorCommand],
-                              state: ChannelUserList, command: ChannelActorCommand
-                            ): Effect[ChannelActorEvent, ChannelUserList] = {
+                              state: ChannelUserList,
+                              command: ChannelActorCommand
+                            )(implicit context: ActorContext[ChannelActorCommand]): Effect[ChannelActorEvent, ChannelUserList] = {
     command match {
       case fromChannel: GetFromChannel =>
         state.users.find(_.channelUser == fromChannel.user).map {
           userWithRef =>
-            fromChannel.ref ! userWithRef
+            fromChannel.ref ! userWithRef.copy(subscriber = subscriberMap.get(fromChannel.user.id))
             Effect.none
         }.getOrElse {
           Effect.none
@@ -94,18 +100,20 @@ object ChannelActor {
         }
         Effect.none
       case subscribe: SubscribeToChannel =>
-        context.log.info(s"User ${subscribe.user} subscribed to channel $channel")
         state.users.find(_.channelUser == subscribe.user).map {
           userWithRef =>
             subscriberMap.put(subscribe.user.id, subscribe.subscriber)
             userWithRef.ref ! UserActor.ReceiveMessages(context.self)
+            context.log.info(s"User ${subscribe.user} subscribed to channel $channel")
             Effect.none
         }.getOrElse {
           Effect.none
         }
       case publish: PublishToChannel =>
         state.users.foreach { user =>
-          user.ref ! UserActor.AddMessage(publish.message, context.self)
+          if(publish.message.message.isDefined) {
+            user.ref ! UserActor.AddMessage(publish.message, context.self)
+          }
         }
         Effect.none
       case persistedMessage: MessagePersisted =>
@@ -120,15 +128,15 @@ object ChannelActor {
 
   private def eventHandler(
                             channel: String,
-                            context: ActorContext[ChannelActorCommand],
                             state: ChannelUserList,
-                            event: ChannelActorEvent
-                          ): ChannelUserList = {
+                            event: ChannelActorEvent,
+                            createUserActor: (UserActor.User, String, ActorContext[ChannelActorCommand]) => ActorRef[UserActor.UserActorCommand]
+                          )(implicit context: ActorContext[ChannelActorCommand]): ChannelUserList = {
     event match {
       case added: UserAddedToChannel =>
         context.log.info(s"User ${added.user} added to channel $channel")
         state.users.find(_.channelUser == added.user).map(_ => state).getOrElse {
-          val userActor = context.spawn(UserActor(added.user, channel), added.user.id)
+          val userActor = createUserActor(added.user, channel, context)
           ChannelUserList(
             state.users + ChannelUserWithRef(added.user, userActor))
         }

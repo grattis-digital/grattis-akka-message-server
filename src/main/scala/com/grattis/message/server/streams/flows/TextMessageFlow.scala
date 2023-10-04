@@ -8,8 +8,8 @@ import akka.NotUsed
 class TextMessageFlow(channelUser: UserActor.User) extends FlowBuilder[UserActor.TopicMessage, TextMessage] {
   def buildFlow(): Flow[UserActor.TopicMessage, TextMessage, NotUsed] = {
     Flow[UserActor.TopicMessage].map {
-      case UserActor.TopicMessage(Some(msg), user, _) if user != channelUser => Some(TextMessage.Strict(s"Received: $msg"))
-      case UserActor.TopicMessage(Some(msg), _, _) => Some(TextMessage.Strict(s"Send: $msg"))
+      case UserActor.TopicMessage(Some(msg), user, _) if user != channelUser => Some(TextMessage.Strict(s"Received: $msg - from User: ${user.userName}"))
+      case UserActor.TopicMessage(Some(msg), user, _) => Some(TextMessage.Strict(s"Send: $msg - for User: ${user.userName}"))
       case _ => None
     }.collect({ case Some(msg) => msg })
   }

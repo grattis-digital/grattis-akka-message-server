@@ -33,14 +33,13 @@ import com.grattis.message.server.UserActor.TopicMessage
 class WebsocketRouteException(msg: String, t: Throwable = null) extends RuntimeException(msg, t)
 
 object RouteProvider {
-  case object StreamTerminationMessage extends UserActor.MessageResult
+  private case object StreamTerminationMessage extends UserActor.MessageResult
 }
 
 class RouteProvider(
                      sourceProvider: SourceProvider = new SourceProvider(),
                      sinkProvider: SinkProvider = new SinkProvider(),
                      flowProvider: FlowProvider = new FlowProvider()
-
                    ) extends LazyLogging {
 
   import RouteProvider._
@@ -54,6 +53,9 @@ class RouteProvider(
           logger.info(s"Channel registered '$channel' for user '$user'")
           val channelUser = UserActor.User(user, user)
 
+          // this basically starts the heartbeat stream with the registered kill switch
+          val (killSwitch, materializedHeartBeatSource) = sourceProvider.heartBeatSource(TextMessage.Strict("heartbeat"))
+
           // this basically starts the source stream with the registered actor ref
           // the response source contains basically of two objects
           // the first is the actor ref that is used to send messages to the source
@@ -66,9 +68,6 @@ class RouteProvider(
 
           // the actor ref is used to subscribe to the topic - so it is basically the subscriber
           registered.channelActor ! ChannelActor.AddToChannel(channelUser, Some(responseActorRef))
-
-          // this basically starts the heartbeat stream with the registered kill switch
-          val (killSwitch, materializedHeartBeatSource) = sourceProvider.heartBeatSource(TextMessage.Strict("heartbeat"))
 
           // the clean up function is used to unregister the channel and shutdown the stream
           def cleanUp(): Unit = {
@@ -98,15 +97,15 @@ class RouteProvider(
             }
           )
 
-          val textMessageFlow = flowProvider.textMessageFlow(channelUser).buildFlow()
-
+          val emtpyMessage: Option[TextMessage] = None
           val incoming =
             flowProvider.topicMessageFlow(channel, channelUser).buildFlow()
               .alsoTo(flowProvider.publishMessageFlow().buildFlow().to(publishSink))
-              .via(textMessageFlow)
-              // not the best way here to filter out the messages - but it works
-              // needed to merge the different sources
-              .filter(_ => false)
+              // -------
+              // at this point it was decided to ignore the incoming messages from the websocket for further processing
+              .map(_ => emtpyMessage)
+              .collect({ case Some(msg) => msg })
+              // -------
               .watchTermination() { (_, done: Future[Done]) =>
                 done.onComplete {
                   case Success(_) =>
@@ -126,7 +125,7 @@ class RouteProvider(
               case _ => None
             }
             .collect({ case Some(msg) => msg })
-            .via(textMessageFlow)
+            .via(flowProvider.textMessageFlow(channelUser).buildFlow())
 
 
           // merge the incoming messages from the websocket and the topic subscription and the heartbeat messages
