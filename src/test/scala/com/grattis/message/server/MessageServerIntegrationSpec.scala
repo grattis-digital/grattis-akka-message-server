@@ -4,7 +4,6 @@ import akka.actor.typed.ActorSystem
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.ws.{Message, TextMessage, WebSocketRequest, WebSocketUpgradeResponse}
 import akka.stream.scaladsl.{Flow, Keep, Sink, Source}
-import akka.stream.{ActorMaterializer, Materializer}
 import akka.util.Timeout
 import com.grattis.message.server.routes.RouteProvider
 import com.grattis.message.server.utils.GrattisSpec
