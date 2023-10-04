@@ -2,11 +2,10 @@ package com.grattis.message.server
 
 import akka.actor.testkit.typed.scaladsl.TestProbe
 import akka.actor.typed.Behavior
-import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
+import akka.actor.typed.scaladsl.ActorContext
 import akka.persistence.testkit.scaladsl.EventSourcedBehaviorTestKit
-import com.grattis.message.server.ChannelActor.{AddToChannel, ChannelActorCommand, ChannelActorEvent, ChannelUserList, ChannelUserWithRef, GetFromChannel, MessagePersisted, RemoveFromChannel, UnsubscribeFromChannel, UserAddedToChannel}
-import com.grattis.message.server.ChannelRegistryActor.{ChannelRegistryActorCommand, UnregisterChannel}
-import com.grattis.message.server.UserActor.{TopicMessage, User, UserActorCommand, UserActorEvent, UserActorState, ReceiveMessages}
+import com.grattis.message.server.ChannelActor.{AddToChannel, ChannelActorCommand, ChannelActorEvent, ChannelUserList, ChannelUserWithRef, GetFromChannel, UserAddedToChannel}
+import com.grattis.message.server.UserActor.{TopicMessage, User, UserActorCommand, ReceiveMessages}
 import com.grattis.message.server.utils.GrattisActorSpec
 
 import scala.language.postfixOps
@@ -54,64 +53,6 @@ class ChannelActorSpec extends GrattisActorSpec {
       val userActorCommand: UserActorCommand = userActorTestProbe.receiveMessage()
       userActorCommand shouldBe a[ReceiveMessages]
     }
-
-
-
-    /*"add a user and a subscriber for an active connection to the channel" in {
-      val user = UserActor.User("testUser", "1234")
-      val testProbe = testKit.createTestProbe[ChannelUserWithRef]()
-      val subscriberProbe = testKit.createTestProbe[TopicMessage]()
-      val addUserCmd = AddToChannel(testUser, Some(subscriberProbe.ref))
-      val result = channelEventSourceTestKit.runCommand(addUserCmd)
-      channelEventSourceTestKit.runCommand(GetFromChannel(testUser, testProbe.ref))
-      val message: ChannelUserWithRef = testProbe.receiveMessage()
-      message.
-      result.event shouldBe UserAddedToChannel(user)
-
-    }
-
-
-
-    "remove a user from the channel" in {
-      val user = UserActor.User("testUser", "1234")
-      val addUserCmd = AddToChannel(user)
-      channelEventSourceTestKit.runCommand(addUserCmd)
-      val removeUserCmd = RemoveFromChannel(user, testKit.spawn(Behaviors.empty[ChannelRegistryActorCommand]))
-      val result = channelEventSourceTestKit.runCommand(removeUserCmd)
-      result.event shouldBe ChannelActor.UserRemovedFromChannel(user)
-    }
-
-    "publish a message to all users in the channel" in {
-      val testProbe = testKit.createTestProbe[MessagePersisted]()
-      val user = User("testUser", "1234")
-      val addUserCmd = AddToChannel(user)
-      channelEventSourceTestKit.runCommand(addUserCmd)
-      val message = TopicMessage(Some("Hello from channel"), user, channel)
-      val publishCmd = ChannelActor.PublishToChannel(message)
-      channelEventSourceTestKit.runCommand(publishCmd)
-
-      testProbe.expectMessageType[MessagePersisted].message should be(testMessage)
-    }
-
-    "add a user to the channel and handle subscriptions" in {
-      val testProbe = testKit.createTestProbe[ChannelUserWithRef]()
-      val subscriberProbe = testKit.createTestProbe[TopicMessage]()
-      channelEventSourceTestKit.runCommand(AddToChannel(testUser, Some(subscriberProbe.ref)))
-      channelEventSourceTestKit.runCommand(GetFromChannel(testUser, testProbe.ref))
-      val result = testProbe.expectMessageType[ChannelUserWithRef]
-      result.channelUser should be(testUser)
-      result.subscriber should be(Some(subscriberProbe.ref))
-    }
-
-    "unsubscribe a user from the channel" in {
-      val registryProbe = testKit.createTestProbe[ChannelRegistryActorCommand]()
-      channelEventSourceTestKit.runCommand(AddToChannel(testUser))
-      channelEventSourceTestKit.runCommand(UnsubscribeFromChannel(testUser, registryProbe.ref))
-      registryProbe.expectMessage(UnregisterChannel(channel))
-      // Here you can check any desired behaviors or changes in state after the unsubscription
-    }*/
-
-    // You can continue to write more test cases for other functionality...
 
   }
 }
